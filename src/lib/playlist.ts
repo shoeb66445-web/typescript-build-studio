@@ -1,3 +1,7 @@
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
+
 export type ManifestType = "mpd" | "hls" | (string & {});
 
 export interface Channel {
@@ -14,111 +18,161 @@ export interface Channel {
 
 export type ChannelMap = Record<string, Channel>;
 
+// ─────────────────────────────────────────────────────────────
+// SLUG — lowercase + alnum only
+// ─────────────────────────────────────────────────────────────
+
 export function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+// ─────────────────────────────────────────────────────────────
+// CHANNEL MAP — dual-format aware parser
+//
+//   Each channel entry captures:
+//     • manifest_type  : "mpd" | "hls"  (from KODIPROP)
+//     • clearkeys      : "kid1:key1,kid2:key2,..."  (MPD entries carry these;
+//                        HLS entries may carry them too but they're dropped
+//                        in the rewritten playlist since .m3u8 needs no DRM)
+//     • url            : raw CDN stream URL
+//     • tvgId / logo / group / lang / display  : metadata pass-through
+//
+//   Parser rules:
+//     • Reads ALL KODIPROP lines between #EXTINF and the stream URL
+//     • Collects manifest_type from inputstream.adaptive.manifest_type
+//     • Collects ALL clearkey pairs — multi-KODIPROP and comma-separated
+//       pairs on a single line are both handled
+//     • Skips inputstream=inputstream.adaptive (informational only)
+//     • Skips license_type (we always know it's clearkey)
+//     • Duplicate slugs → last-write wins
+// ─────────────────────────────────────────────────────────────
+
 export function buildChannelMap(raw: string): ChannelMap {
   const lines = raw.split(/\r?\n/);
-  const channels: ChannelMap = {};
-  let index = 0;
+  const map: ChannelMap = {};
+  let i = 0;
 
-  while (index < lines.length) {
-    const line = lines[index]?.trim() ?? "";
+  while (i < lines.length) {
+    const line = (lines[i] ?? "").trim();
+
     if (!line || line === "#EXTM3U") {
-      index += 1;
+      i++;
       continue;
     }
 
-    if (!line.startsWith("#EXTINF:")) {
-      index += 1;
-      continue;
-    }
+    if (line.startsWith("#EXTINF:")) {
+      // ── Metadata extraction ─────────────────────────────────
+      const attr = (key: string): string => {
+        const m = line.match(new RegExp(`${key}="([^"]*)"`, "i"));
+        return m ? m[1] : "";
+      };
+      const displayMatch = line.match(/,([^,\r\n]+)$/);
 
-    const getAttribute = (key: string) => {
-      const match = line.match(new RegExp(`${key}="([^"]*)"`, "i"));
-      return match?.[1] ?? "";
-    };
-    const displayMatch = line.match(/,([^,\r\n]+)$/);
-    const name = getAttribute("tvg-name") || displayMatch?.[1]?.trim() || "";
-    const slug = name ? slugify(name) : "";
-    const tvgId = getAttribute("tvg-id");
-    const logo = getAttribute("tvg-logo");
-    const group = getAttribute("group-title");
-    const lang = getAttribute("tvg-language");
-    const display = displayMatch?.[1]?.trim() || name;
+      const name = attr("tvg-name") || (displayMatch ? displayMatch[1].trim() : "");
+      const slug = name ? slugify(name) : null;
+      const tvgId = attr("tvg-id");
+      const logo = attr("tvg-logo");
+      const group = attr("group-title");
+      const lang = attr("tvg-language");
+      const display = displayMatch ? displayMatch[1].trim() : name;
 
-    let manifestType: ManifestType = "mpd";
-    const clearkeys: string[] = [];
-    let next = index + 1;
+      // ── KODIPROP scan ───────────────────────────────────────
+      let manifestType: ManifestType = "mpd"; // safe default — JioTV is mostly DASH
+      const clearkeys: string[] = [];
+      let j = i + 1;
 
-    while (next < lines.length) {
-      const propertyLine = lines[next]?.trim() ?? "";
-      if (!propertyLine.startsWith("#KODIPROP:") && !propertyLine.startsWith("#EXTVLCOPT:")) {
-        break;
-      }
+      while (j < lines.length) {
+        const kl = (lines[j] ?? "").trim();
+        if (!kl.startsWith("#KODIPROP:") && !kl.startsWith("#EXTVLCOPT:")) break;
 
-      if (propertyLine.startsWith("#KODIPROP:")) {
-        const manifestMatch = propertyLine.match(
-          /inputstream\.adaptive\.manifest_type=(\S+)/i,
-        );
-        if (manifestMatch?.[1]) manifestType = manifestMatch[1].toLowerCase().trim();
+        if (kl.startsWith("#KODIPROP:")) {
+          // manifest_type detection
+          const mtMatch = kl.match(/inputstream\.adaptive\.manifest_type=(\S+)/i);
+          if (mtMatch) manifestType = mtMatch[1].toLowerCase().trim();
 
-        const licenseMatch = propertyLine.match(
-          /inputstream\.adaptive\.license_key=([^\s#]+)/i,
-        );
-        if (licenseMatch?.[1] && !licenseMatch[1].startsWith("http")) {
-          for (const pair of licenseMatch[1].split(",")) {
-            const value = pair.trim();
-            if (value.includes(":")) clearkeys.push(value);
+          // clearkey collection — comma-separated KID:KEY pairs
+          const lkMatch = kl.match(/inputstream\.adaptive\.license_key=([^\s#]+)/i);
+          if (lkMatch && !lkMatch[1].startsWith("http")) {
+            lkMatch[1].split(",").forEach((pair) => {
+              const p = pair.trim();
+              if (p.includes(":")) clearkeys.push(p);
+            });
           }
         }
+
+        j++;
       }
-      next += 1;
+
+      const rawUrl = lines[j] ? lines[j].trim() : "";
+
+      if (slug && rawUrl.startsWith("http")) {
+        map[slug] = {
+          url: rawUrl,
+          manifestType,
+          clearkey: clearkeys.join(","),
+          tvgId,
+          logo,
+          group,
+          lang,
+          display,
+          name,
+        };
+      }
+
+      i = j + 1;
+      continue;
     }
 
-    const rawUrl = lines[next]?.trim() ?? "";
-    if (slug && rawUrl.startsWith("http")) {
-      channels[slug] = {
-        url: rawUrl,
-        manifestType,
-        clearkey: clearkeys.join(","),
-        tvgId,
-        logo,
-        group,
-        lang,
-        display,
-        name,
-      };
-    }
-
-    index = next + 1;
+    i++;
   }
 
-  return channels;
+  return map;
 }
 
+// ─────────────────────────────────────────────────────────────
+// PLAYLIST REWRITER — format-conditional output
+//
+//   MPD channels:
+//     • inputstream.adaptive.manifest_type=mpd
+//     • inputstream.adaptive.license_type=clearkey
+//     • inputstream.adaptive.license_key=<kid:key,...>   ← preserved
+//     • stream URL → /stream?id=<slug>  (302 proxy)
+//
+//   HLS channels (.m3u8):
+//     • inputstream.adaptive.manifest_type=hls
+//     • NO license_type, NO license_key                  ← stripped
+//     • stream URL → /stream?id=<slug>  (302 proxy)
+//
+//   Both types:
+//     • inputstream=inputstream.adaptive  preserved (Kodi needs it)
+//     • All metadata attributes passed through verbatim
+// ─────────────────────────────────────────────────────────────
+
 export function rewritePlaylist(channels: ChannelMap, workerBase: string): string {
-  const output = ['#EXTM3U url-tvg="" refresh="300"'];
+  const out: string[] = ['#EXTM3U url-tvg="" refresh="300"'];
 
-  for (const [slug, channel] of Object.entries(channels)) {
-    const langAttribute = channel.lang ? ` tvg-language="${channel.lang}"` : "";
-    output.push(
-      `#EXTINF:-1 tvg-id="${channel.tvgId}" tvg-logo="${channel.logo}" ` +
-        `group-title="${channel.group}"${langAttribute},${channel.display}`,
+  for (const [slug, ch] of Object.entries(channels)) {
+    const langAttr = ch.lang ? ` tvg-language="${ch.lang}"` : "";
+
+    out.push(
+      `#EXTINF:-1 tvg-id="${ch.tvgId}" tvg-logo="${ch.logo}" ` +
+        `group-title="${ch.group}"${langAttr},${ch.display}`,
     );
-    output.push("#KODIPROP:inputstream=inputstream.adaptive");
-    output.push(`#KODIPROP:inputstream.adaptive.manifest_type=${channel.manifestType}`);
 
-    if (channel.manifestType === "mpd") {
-      output.push("#KODIPROP:inputstream.adaptive.license_type=clearkey");
-      if (channel.clearkey) {
-        output.push(`#KODIPROP:inputstream.adaptive.license_key=${channel.clearkey}`);
+    out.push("#KODIPROP:inputstream=inputstream.adaptive");
+    out.push(`#KODIPROP:inputstream.adaptive.manifest_type=${ch.manifestType}`);
+
+    if (ch.manifestType === "mpd") {
+      // DASH — clearkey DRM required, write all KID:KEY pairs
+      out.push("#KODIPROP:inputstream.adaptive.license_type=clearkey");
+      if (ch.clearkey) {
+        out.push(`#KODIPROP:inputstream.adaptive.license_key=${ch.clearkey}`);
       }
     }
+    // HLS — no DRM lines at all. Clean pass-through.
 
-    output.push(`${workerBase}/stream?id=${encodeURIComponent(slug)}`);
+    out.push(`${workerBase}/stream?id=${encodeURIComponent(slug)}`);
   }
 
-  return output.join("\n");
+  return out.join("\n");
 }
