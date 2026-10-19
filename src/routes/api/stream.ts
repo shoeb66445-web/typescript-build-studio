@@ -4,7 +4,7 @@ import { buildChannelMap, type ChannelMap } from "../../lib/playlist";
 // ─────────────────────────────────────────────────────────────
 // CONFIG — same upstream as /api/playlist
 // ─────────────────────────────────────────────────────────────
-const SOURCE_M3U = "https://premiumplugx.top/jiostb/mjelo.php?view=raw";
+const SOURCE_M3U = "https://premiumplugx.top/jiostb/gdryt.php?view=raw";
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",

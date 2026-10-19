@@ -4,7 +4,7 @@ import { buildChannelMap, rewritePlaylist, type ChannelMap } from "../../lib/pla
 // ─────────────────────────────────────────────────────────────
 // CONFIG — mirrors worker.js constants
 // ─────────────────────────────────────────────────────────────
-const SOURCE_M3U = "https://premiumplugx.top/jiostb/mjelo.php?view=raw";
+const SOURCE_M3U = "https://premiumplugx.top/jiostb/gdryt.php?view=raw";
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
