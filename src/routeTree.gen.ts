@@ -10,6 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPlaylistRouteImport } from './routes/api/playlist'
+import { Route as ApiStreamRouteImport } from './routes/api/stream'
+import { Route as ApiChannelsRouteImport } from './routes/api/channels'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -17,26 +20,56 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 
+const ApiPlaylistRoute = ApiPlaylistRouteImport.update({
+  id: '/api/playlist',
+  path: '/api/playlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+
+const ApiStreamRoute = ApiStreamRouteImport.update({
+  id: '/api/stream',
+  path: '/api/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
+
+const ApiChannelsRoute = ApiChannelsRouteImport.update({
+  id: '/api/channels',
+  path: '/api/channels',
+  getParentRoute: () => rootRouteImport,
+} as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/playlist': typeof ApiPlaylistRoute
+  '/api/stream': typeof ApiStreamRoute
+  '/api/channels': typeof ApiChannelsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/playlist': typeof ApiPlaylistRoute
+  '/api/stream': typeof ApiStreamRoute
+  '/api/channels': typeof ApiChannelsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/playlist': typeof ApiPlaylistRoute
+  '/api/stream': typeof ApiStreamRoute
+  '/api/channels': typeof ApiChannelsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/playlist' | '/api/stream' | '/api/channels'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/playlist' | '/api/stream' | '/api/channels'
+  id: '__root__' | '/' | '/api/playlist' | '/api/stream' | '/api/channels'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPlaylistRoute: typeof ApiPlaylistRoute
+  ApiStreamRoute: typeof ApiStreamRoute
+  ApiChannelsRoute: typeof ApiChannelsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +81,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/playlist': {
+      id: '/api/playlist'
+      path: '/api/playlist'
+      fullPath: '/api/playlist'
+      preLoaderRoute: typeof ApiPlaylistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stream': {
+      id: '/api/stream'
+      path: '/api/stream'
+      fullPath: '/api/stream'
+      preLoaderRoute: typeof ApiStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/channels': {
+      id: '/api/channels'
+      path: '/api/channels'
+      fullPath: '/api/channels'
+      preLoaderRoute: typeof ApiChannelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPlaylistRoute: ApiPlaylistRoute,
+  ApiStreamRoute: ApiStreamRoute,
+  ApiChannelsRoute: ApiChannelsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
