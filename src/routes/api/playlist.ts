@@ -80,7 +80,7 @@ export const Route = createFileRoute("/api/playlist")({
 
         // Build the worker base URL from the request
         const url = new URL(request.url);
-        const workerBase = `${url.protocol}//${url.host}`;
+        const workerBase = `${url.protocol}//${url.host}/api`;
 
         const playlist = rewritePlaylist(channels, workerBase);
 
